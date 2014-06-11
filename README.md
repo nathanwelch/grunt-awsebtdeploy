@@ -188,6 +188,36 @@ All settings are optional except `bucket` and `key`, which have sensible default
 
 > `bucket` must refer to an existing and accessible bucket
 
+##### options.hostedZone
+
+* Type: `String` 
+
+Optional Route53 Hosted Zone ID that contains records pointing to your environment. 
+Any records that point to `options.environmentCNAME` will be updated during a swapDeploy to point to the active environment. 
+
+If you have alias records or other records that should point to the environtment's load balancer or EC2 instance (for single-instance deploys), pass those records in `options.r53Records` that are in this hosted zone.
+
+> Note: The task will wait out the max TTL value of records that point to `options.environmentCNAME` (plus a 30 second buffer) to ensure that DNS caches can expire and that the records always point to a working environment. 
+
+##### options.r53Records
+
+* Type: `Array`
+* Example: 
+```js
+{
+  r53Records: [{
+    name: 'example.com',
+    type: 'A'
+  }]
+}
+```
+
+Optional array of Route53 record names/types that should be updated to point to the current environment during a swapDeploy. This is useful if you use [a custom domain](http://docs.aws.amazon.com/elasticbeanstalk/latest/dg/customdomains.html) for your beanstalk app to serve from the domain apex (e.g. example.com instead of www.example.com). All records in this array (whether alias records at the domain apex or not) will be updated to point to the DNS name of the current load balancer or single instance of the environment during the deployment.
+
+During a [swap deployment](http://docs.aws.amazon.com/elasticbeanstalk/latest/dg/using-features.CNAMESwap.html), these DNS records will be changed to point to the new environment while the old environment is updating. After the old environment is updated, the DNS records are moved back to the old environment. 
+
+> Note: The task will wait out the max TTL value of the given records (plus a 30 second buffer) to ensure that DNS caches can expire and that the records always point to a working environment. 
+
 ## Usage Examples
 
 ```js
@@ -203,6 +233,11 @@ grunt.initConfig({
         accessKeyId: "your access ID",
         // or via the AWS_SECRET_ACCESS_KEY environment variable
         secretAccessKey: "your secret access key",
+        hostedZone: 'your hosted zone ID',
+        r53Records: [{
+          name: 'example.com',
+          type: 'A'
+        }]
       }
     }
   }
@@ -271,8 +306,8 @@ code is 200 and, if `options.healthPageContents` is set, until the body of the r
 ### swapToNew 
 
 A flavor of *blue/green* deployment where a new environment is created with the same settings as the current one, 
-the application is deployed to the new environment and finally the CNAMEs of the environments are swapped 
-so that the old environment url now points to the new one. 
+the application is deployed to the new environment, the CNAMEs (and any Route53 records pointing to the CNAMEs or defined in `options.r53Records) of the environments are swapped 
+so that the old environment url now points to the new one, and finally the new app is deployed to the old environment. Once the deploy to the old environment is complete, all of the DNS records are swapped back and the new environment is terminated.
 This method enables zero-downtime deployments and the procedure 
 is described in the [AWS documentation](http://docs.aws.amazon.com/elasticbeanstalk/latest/dg/using-features.CNAMESwap.html).
 
