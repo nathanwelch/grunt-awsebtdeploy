@@ -199,6 +199,11 @@ module.exports = function (grunt) {
       if (options.r53Records && !options.hostedZone) {
         grunt.warn('No "hostedZone" supplied for r53Records');
       }
+
+      if (options.r53Records &&
+          _.find(options.r53Records, function (item) { return item.type !== 'CNAME' || item.type !== 'A'; })) {
+        grunt.warn('r53Records must have a type of A or CNAME');
+      }
     }
 
     var task = this,
