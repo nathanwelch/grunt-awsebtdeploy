@@ -215,9 +215,16 @@ module.exports = function (grunt) {
         grunt.warn('No "hostedZone" supplied for r53Records');
       }
 
-      if (options.r53Records &&
-          _.find(options.r53Records, function (item) { return item.type !== 'CNAME' || item.type !== 'A'; })) {
-        grunt.warn('r53Records must have a type of A or CNAME');
+      if (options.r53Records) {
+        var invalidRecords = _.filter(options.r53Records, function (item) {
+          return item.type !== 'CNAME' && item.type !== 'A';
+        });
+
+        if (invalidRecords.length) {
+          grunt.log.writeln('Invalid records: ');
+          grunt.log.write(invalidRecords);
+          grunt.warn('r53Records must have a type of A or CNAME');
+        }
       }
     }
 
