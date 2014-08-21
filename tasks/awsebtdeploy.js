@@ -699,9 +699,12 @@ module.exports = function (grunt) {
       grunt.log.writeln('Waiting for environment to become ready (timing out in ' +
           options.deployTimeoutMin + ' minutes)...\n');
 
+      var first = true;
       function checkEnvReady() {
-        return Q.delay(options.deployIntervalSec * 1000)
+        return Q.delay(first ? 0 : options.deployIntervalSec * 1000)
             .then(function () {
+              first = false;
+
               return qAWS.describeEnvironments({
                 ApplicationName: options.applicationName,
                 EnvironmentNames: [env.EnvironmentName],
