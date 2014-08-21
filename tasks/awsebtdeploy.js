@@ -9,14 +9,14 @@
 'use strict';
 
 module.exports = function (grunt) {
-  var AWS = require('aws-sdk'),
-      path = require('path'),
-      _ = require('lodash'),
-      fs = require('fs'),
-      get = require('http').get,
-      sget = require('https').get,
-      util = require('util'),
-      Q = require('q'),
+  var AWS    = require('aws-sdk'),
+      path   = require('path'),
+      _      = require('lodash'),
+      fs     = require('fs'),
+      get    = require('http').get,
+      sget   = require('https').get,
+      util   = require('util'),
+      Q      = require('q'),
       mkdirp = require('mkdirp');
 
   function findEnvironmentByCNAME(data, cname) {
@@ -28,18 +28,23 @@ module.exports = function (grunt) {
   }
 
   function createEnvironmentName(applicationName) {
-    var maxLength = 23,
-        time = new Date().getTime().toString(),
-        timeLength = time.length,
+    var maxLength      = 23,
+        time           = new Date().getTime().toString(),
+        timeLength     = time.length,
         availableSpace = maxLength - applicationName.length,
-        timePart = time.substring(timeLength - availableSpace, timeLength);
+        timePart       = time.substring(timeLength - availableSpace, timeLength);
 
     if (applicationName.length > maxLength - 3)
       grunt.log.subhead('Warning: application name is too long to guarantee ' +
           'a unique environment name, maximum length ' +
           maxLength + ' characters');
 
-    return applicationName + timePart;
+    if (/^[a-zA-Z0-9\-]+$/.test(applicationName))
+      return applicationName + timePart;
+
+    grunt.log.subhead('Notice: application name contains invalid characters ' +
+        'for a environment name; stripping everything non letter, digit, or dash');
+    return applicationName.replace(/[^a-zA-Z0-9\-]+/g, "") + timePart;
   }
 
   function wrapAWS(eb, s3, r53, elb, ec2) {
@@ -91,10 +96,10 @@ module.exports = function (grunt) {
           intervalSec: 2
         }),
         awsOptions = setupAWSOptions(options),
-        eb = new AWS.ElasticBeanstalk(awsOptions),
-        request = Q.nbind(eb.requestEnvironmentInfo, eb),
-        retrieve = Q.nbind(eb.retrieveEnvironmentInfo, eb),
-        args = { EnvironmentName: options.environmentName, InfoType: 'tail' };
+        eb         = new AWS.ElasticBeanstalk(awsOptions),
+        request    = Q.nbind(eb.requestEnvironmentInfo, eb),
+        retrieve   = Q.nbind(eb.retrieveEnvironmentInfo, eb),
+        args       = { EnvironmentName: options.environmentName, InfoType: 'tail' };
 
     grunt.log.writeln('Requesting logs for environment ' + options.environmentName + '...');
 
@@ -175,6 +180,13 @@ module.exports = function (grunt) {
         options.healthPage = '/' + options.healthPage;
       }
 
+      if (!options.healthPageScheme) {
+        options.healthPageScheme = 'http';
+      } else if (options.healthPageScheme !== 'http' && options.healthPageScheme !== 'https') {
+        grunt.warn('"healthPageScheme" only accepts "http" or "https", reverting to "http"');
+        options.healthPageScheme = 'http';
+      }
+
       if (!options.versionLabel) {
         options.versionLabel = path.basename(options.sourceBundle,
             path.extname(options.sourceBundle));
@@ -206,8 +218,8 @@ module.exports = function (grunt) {
       }
     }
 
-    var task = this,
-        done = this.async(),
+    var task    = this,
+        done    = this.async(),
         options = this.options({
           versionDescription: '',
           deployType: 'inPlace',
@@ -217,7 +229,7 @@ module.exports = function (grunt) {
           healthPageIntervalSec: 10
         }),
         awsOptions = setupAWSOptions(options),
-        qAWS = wrapAWS(
+        qAWS       = wrapAWS(
           new AWS.ElasticBeanstalk(awsOptions),
           new AWS.S3(awsOptions),
           new AWS.Route53(awsOptions),
@@ -726,24 +738,31 @@ module.exports = function (grunt) {
 
         var deferred = Q.defer();
 
-        get({
-              hostname: env.CNAME,
-              path: options.healthPage,
-              headers: {
-                'cache-control': 'no-cache'
-              }
-            },
-            function (res) {
-              if (res.statusCode === 200) {
-                grunt.log.ok();
-                deferred.resolve(res);
-              } else {
-                grunt.log.writeln('Status ' + res.statusCode);
-                deferred.resolve(
-                    Q.delay(options.healthPageIntervalSec * 1000)
-                        .then(checkHealthPage));
-              }
-            });
+        var checkHealthPageRequest = {
+          hostname: env.CNAME,
+          path: options.healthPage,
+          headers: {
+            'cache-control': 'no-cache'
+          }
+        };
+        var checkoutHealthPageCallback = function (res) {
+          if (res.statusCode === 200) {
+            grunt.log.ok();
+            deferred.resolve(res);
+          } else {
+            grunt.log.writeln('Status ' + res.statusCode);
+            deferred.resolve(
+              Q.delay(options.healthPageIntervalSec * 1000)
+               .then(checkHealthPage));
+          }
+        };
+        if (options.healthPageScheme === 'https') {
+          //Necessary because ELB's security certificate won't be valid yet.
+          checkHealthPageRequest.rejectUnauthorized = false;
+          sget(checkHealthPageRequest, checkoutHealthPageCallback);
+        } else {
+          get(checkHealthPageRequest, checkoutHealthPageCallback);
+        }
 
         return deferred.promise;
       }
@@ -802,6 +821,8 @@ module.exports = function (grunt) {
           return inPlaceDeploy(env);
         case 'swapToNew':
           return swapDeploy(env);
+        case 'manual':
+          return;
         default:
           grunt.warn('Deploy type "' + options.deployType + '" unrecognized');
       }
@@ -813,6 +834,7 @@ module.exports = function (grunt) {
       return qAWS.createApplicationVersion({
         ApplicationName: options.applicationName,
         VersionLabel: options.versionLabel,
+        Description: options.versionDescription,
         SourceBundle: {
           S3Bucket: options.s3.bucket,
           S3Key: options.s3.key
