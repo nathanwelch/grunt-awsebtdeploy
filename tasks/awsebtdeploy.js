@@ -28,11 +28,14 @@ module.exports = function (grunt) {
   }
 
   function createEnvironmentName(applicationName) {
-    var maxLength      = 23,
-        time           = new Date().getTime().toString(),
-        timeLength     = time.length,
-        availableSpace = maxLength - applicationName.length,
-        timePart       = time.substring(timeLength - availableSpace, timeLength);
+    var maxLength       = 23,
+        maxAppLength    = maxLength - 4,
+        time            = new Date().getTime().toString(),
+        timeLength      = time.length,
+        // Leaving a few characters at the end of the app name for the timestamp
+        applicationName = applicationName.substring(0, Math.min(applicationName.length, maxAppLength)),
+        availableSpace  = maxLength - applicationName.length,
+        timePart        = time.substring(timeLength - availableSpace, timeLength);
 
     if (applicationName.length > maxLength - 3)
       grunt.log.subhead('Warning: application name is too long to guarantee ' +
@@ -257,10 +260,7 @@ module.exports = function (grunt) {
     }
 
     function createNewEnvironment(env, templateData) {
-      /* Basing the new env name off the old env name because the app name has
-       * different validation requirements than env names do.
-       */
-      var newEnvName = createEnvironmentName(env.EnvironmentName);
+      var newEnvName = createEnvironmentName(options.applicationName);
 
       grunt.log.write('Creating new environment "' + newEnvName + '"...');
 
