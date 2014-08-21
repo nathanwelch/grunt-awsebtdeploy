@@ -283,6 +283,7 @@ module.exports = function (grunt) {
         DestinationEnvironmentName: newEnv.EnvironmentName
       }).then(function () {
             grunt.log.ok();
+            grunt.log.writeln();
             return oldEnv;
           });
     }
@@ -368,7 +369,9 @@ module.exports = function (grunt) {
 
               // If we have no Route53 settings, carry on
               return fromEnv;
-            });
+            })
+            .then(waitForGreen.bind(this, toEnv))
+            .then(waitForGreen.bind(this, fromEnv));
     }
 
     /**
@@ -665,12 +668,14 @@ module.exports = function (grunt) {
     }
 
     function updateEnvironment(env) {
+      grunt.log.writeln("\nUpdating environment " + env.EnvironmentName + ' with version ' + options.versionLabel + '...');
       return qAWS.updateEnvironment({
         EnvironmentName: env.EnvironmentName,
         VersionLabel: options.versionLabel,
         Description: options.versionDescription
       }).then(function () {
             grunt.log.ok();
+            grunt.log.writeln();
             return env;
           });
     }
@@ -683,13 +688,57 @@ module.exports = function (grunt) {
           .then(waitForHealthPage);
     }
 
-    function waitForDeployment(env) {
+    function waitForGreen(env) {
       grunt.log.writeln('Waiting for environment to become ready (timing out in ' +
-          options.deployTimeoutMin + ' minutes)...');
+          options.deployTimeoutMin + ' minutes)...\n');
 
-      function checkDeploymentComplete() {
+      function checkEnvReady() {
         return Q.delay(options.deployIntervalSec * 1000)
             .then(function () {
+              return qAWS.describeEnvironments({
+                ApplicationName: options.applicationName,
+                EnvironmentNames: [env.EnvironmentName],
+                IncludeDeleted: false
+              });
+            })
+            .then(function (data) {
+              if (!data.Environments.length) {
+                grunt.log.writeln('No environment: ' + env.EnvironmentName + ' ...');
+                return checkEnvReady();
+              }
+
+              var currentEnv = data.Environments[0];
+
+              if (currentEnv.Status !== 'Ready') {
+                grunt.log.writeln('Environment ' + currentEnv.EnvironmentName +
+                    ' status: ' + currentEnv.Status + '...');
+                return checkEnvReady();
+              }
+
+              if (currentEnv.Health !== 'Green') {
+                grunt.log.writeln('Environment ' + currentEnv.EnvironmentName +
+                    ' health: ' + currentEnv.Health + '...');
+                return checkEnvReady();
+              }
+
+              grunt.log.writeln('Environment "' + currentEnv.EnvironmentName + '" is Ready and Green\n');
+
+              return currentEnv;
+            });
+      }
+
+      return Q.timeout(checkEnvReady(), options.deployTimeoutMin * 60 * 1000);
+    }
+
+    function waitForDeployment(env) {
+      grunt.log.writeln('Waiting for environment to deploy new version (timing out in ' +
+          options.deployTimeoutMin + ' minutes)...\n');
+
+      var first = true;
+      function checkDeploymentComplete() {
+        return Q.delay(first ? 0 : options.deployIntervalSec * 1000)
+            .then(function () {
+              first = false;
               return qAWS.describeEnvironments({
                 ApplicationName: options.applicationName,
                 EnvironmentNames: [env.EnvironmentName],
@@ -706,26 +755,17 @@ module.exports = function (grunt) {
 
               var currentEnv = data.Environments[0];
 
-              if (currentEnv.Status !== 'Ready') {
-                grunt.log.writeln('Environment ' + currentEnv.EnvironmentName +
-                    ' status: ' + currentEnv.Status + '...');
-                return checkDeploymentComplete();
-              }
-
-              if (currentEnv.Health !== 'Green') {
-                grunt.log.writeln('Environment ' + currentEnv.EnvironmentName +
-                    ' health: ' + currentEnv.Health + '...');
-                return checkDeploymentComplete();
-              }
-
               grunt.log.writeln(options.versionLabel + ' has been deployed to ' +
-                  currentEnv.EnvironmentName + ' and environment is Ready and Green');
+                  currentEnv.EnvironmentName + ' and environment is Ready and Green\n');
 
               return currentEnv;
             });
       }
 
-      return Q.timeout(checkDeploymentComplete(), options.deployTimeoutMin * 60 * 1000);
+      return Q.fcall(waitForGreen, env)
+              .then(function () {
+                return Q.timeout(checkDeploymentComplete(), options.deployTimeoutMin * 60 * 1000)
+              })
     }
 
     function waitForHealthPage(env) {
