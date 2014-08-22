@@ -335,7 +335,10 @@ module.exports = function (grunt) {
      * supplied, any DNS records in that hosted zone with a value of the toEnv's CNAME
      * (e.g. a CNAME myapp.example.com pointing to myapp-env.elasticbeanstalk.com) will
      * be checked for a max TTL value. This will wait the max of this TTL and the TTLs
-     * of any records in options.r53Records.
+     * of any records in options.r53Records. Additionally, it will wait for both
+     * environments to be green and ready using waitForGreen. This ensures beanstalk
+     * operations can be taken on the environment after the swap since beanstalk puts them
+     * in an inoperable state during the swap.
      *
      * Fulfilled promise returns the fromEnv.
      *
@@ -695,6 +698,52 @@ module.exports = function (grunt) {
           .then(waitForHealthPage);
     }
 
+    function waitForDeployment(env) {
+      grunt.log.writeln('Waiting for environment to deploy new version (timing out in ' +
+          options.deployTimeoutMin + ' minutes)...\n');
+
+      var first = true;
+      function checkDeploymentComplete() {
+        return Q.delay(first ? 0 : options.deployIntervalSec * 1000)
+            .then(function () {
+              first = false;
+              return qAWS.describeEnvironments({
+                ApplicationName: options.applicationName,
+                EnvironmentNames: [env.EnvironmentName],
+                VersionLabel: options.versionLabel,
+                IncludeDeleted: false
+              });
+            })
+            .then(function (data) {
+              if (!data.Environments.length) {
+                grunt.log.writeln(options.versionLabel + ' still not deployed to ' +
+                    env.EnvironmentName + ' ...');
+                return checkDeploymentComplete();
+              }
+
+              var currentEnv = data.Environments[0];
+
+              grunt.log.writeln(options.versionLabel + ' has been deployed to ' +
+                  currentEnv.EnvironmentName + ' and environment is Ready and Green\n');
+
+              return currentEnv;
+            });
+      }
+
+      return Q.fcall(waitForGreen, env)
+              .then(function () {
+                return Q.timeout(checkDeploymentComplete(), options.deployTimeoutMin * 60 * 1000)
+              })
+    }
+
+    /**
+     * Waits for the given environment to have a health of green and a status of ready.
+     * Will timeout in options.deployTimeoutMin minutes.
+     *
+     * @param {object} env Elastic Beanstalk environment object containing an EnvironmentName.
+     *
+     * @return {Promise} A Q promise that will be resolved with the env from describeEnvironments.
+     */
     function waitForGreen(env) {
       grunt.log.writeln('Waiting for environment to become ready (timing out in ' +
           options.deployTimeoutMin + ' minutes)...\n');
@@ -738,44 +787,6 @@ module.exports = function (grunt) {
       }
 
       return Q.timeout(checkEnvReady(), options.deployTimeoutMin * 60 * 1000);
-    }
-
-    function waitForDeployment(env) {
-      grunt.log.writeln('Waiting for environment to deploy new version (timing out in ' +
-          options.deployTimeoutMin + ' minutes)...\n');
-
-      var first = true;
-      function checkDeploymentComplete() {
-        return Q.delay(first ? 0 : options.deployIntervalSec * 1000)
-            .then(function () {
-              first = false;
-              return qAWS.describeEnvironments({
-                ApplicationName: options.applicationName,
-                EnvironmentNames: [env.EnvironmentName],
-                VersionLabel: options.versionLabel,
-                IncludeDeleted: false
-              });
-            })
-            .then(function (data) {
-              if (!data.Environments.length) {
-                grunt.log.writeln(options.versionLabel + ' still not deployed to ' +
-                    env.EnvironmentName + ' ...');
-                return checkDeploymentComplete();
-              }
-
-              var currentEnv = data.Environments[0];
-
-              grunt.log.writeln(options.versionLabel + ' has been deployed to ' +
-                  currentEnv.EnvironmentName + ' and environment is Ready and Green\n');
-
-              return currentEnv;
-            });
-      }
-
-      return Q.fcall(waitForGreen, env)
-              .then(function () {
-                return Q.timeout(checkDeploymentComplete(), options.deployTimeoutMin * 60 * 1000)
-              })
     }
 
     function waitForHealthPage(env) {
