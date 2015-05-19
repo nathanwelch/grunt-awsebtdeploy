@@ -918,7 +918,8 @@ module.exports = function (grunt) {
 
       grunt.verbose.writeflags(s3Object, 's3Param');
 
-      s3Object.Body = new Buffer(fs.readFileSync(options.sourceBundle));
+      //s3Object.Body = new Buffer(fs.readFileSync(options.sourceBundle));
+      s3Object.Body = fs.createReadStream(options.sourceBundle);
 
       grunt.log.write('Uploading source bundle "' + options.sourceBundle +
           '" to S3 location "' + options.s3.bucket + '/' + options.s3.key + '"...');
