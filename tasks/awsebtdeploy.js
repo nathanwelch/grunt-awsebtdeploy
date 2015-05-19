@@ -918,7 +918,7 @@ module.exports = function (grunt) {
 
       grunt.verbose.writeflags(s3Object, 's3Param');
 
-      //s3Object.Body = new Buffer(fs.readFileSync(options.sourceBundle));
+      // Trying to fix this issue: https://github.com/aws/aws-sdk-js/issues/158
       s3Object.Body = fs.createReadStream(options.sourceBundle);
 
       grunt.log.write('Uploading source bundle "' + options.sourceBundle +
