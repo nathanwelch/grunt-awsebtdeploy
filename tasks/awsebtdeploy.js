@@ -56,6 +56,7 @@ module.exports = function (grunt) {
       describeEnvironments: Q.nbind(eb.describeEnvironments, eb),
       describeEnvironmentResources: Q.nbind(eb.describeEnvironmentResources, eb),
       putS3Object: Q.nbind(s3.putObject, s3),
+      headObject: Q.nbind(s3.headObject, s3),
       createApplicationVersion: Q.nbind(eb.createApplicationVersion, eb),
       updateEnvironment: Q.nbind(eb.updateEnvironment, eb),
       createConfigurationTemplate: Q.nbind(eb.createConfigurationTemplate, eb),
@@ -75,11 +76,12 @@ module.exports = function (grunt) {
   }
 
   function setupAWSOptions(options) {
-    if (!options.accessKeyId) options.accessKeyId = process.env.AWS_ACCESS_KEY_ID;
-    if (!options.secretAccessKey) options.secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY;
-
-    if (!options.accessKeyId) grunt.warn('Missing "accessKeyId"');
-    if (!options.secretAccessKey) grunt.warn('Missing "secretAccessKey"');
+    if (!options.accessKeyId && process.env.AWS_ACCESS_KEY_ID) {
+        options.accessKeyId = process.env.AWS_ACCESS_KEY_ID;
+    }
+    if (!options.secretAccessKey && process.env.AWS_SECRET_ACCESS_KEY) {
+        options.secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY;
+    }
 
     return {
       accessKeyId: options.accessKeyId,
@@ -172,9 +174,12 @@ module.exports = function (grunt) {
       if (!options.applicationName) grunt.warn('Missing "applicationName"');
       if (!options.environmentCNAME) grunt.warn('Missing "environmentCNAME"');
       if (!options.region) grunt.warn('Missing "region"');
-      if (!options.sourceBundle) grunt.warn('Missing "sourceBundle"');
 
-      if (!grunt.file.isFile(options.sourceBundle))
+      if (!options.s3) {
+        options.s3 = {};
+      }
+
+      if (!options.s3.key && !grunt.file.isFile(options.sourceBundle))
         grunt.warn('"sourceBundle" points to a non-existent file');
 
       if (!options.healthPage) {
@@ -190,21 +195,17 @@ module.exports = function (grunt) {
         options.healthPageScheme = 'http';
       }
 
-      if (!options.versionLabel) {
-        options.versionLabel = path.basename(options.sourceBundle,
-            path.extname(options.sourceBundle));
-      }
-
-      if (!options.s3) {
-        options.s3 = {};
-      }
-
       if (!options.s3.bucket) {
         options.s3.bucket = options.applicationName;
       }
 
       if (!options.s3.key) {
         options.s3.key = path.basename(options.sourceBundle);
+      }
+
+      if (!options.versionLabel) {
+        options.versionLabel = path.basename(options.s3.key,
+            path.extname(options.s3.key));
       }
 
       if (options.r53Records && !_.isArray(options.r53Records)) {
@@ -907,28 +908,34 @@ module.exports = function (grunt) {
     }
 
     function uploadApplication(env) {
-      var s3Object = {};
+      if (options.sourceBundle) {
+        var s3Object = {};
 
-      for (var key in options.s3) {
-        if (options.s3.hasOwnProperty(key)) {
-          s3Object[key.substring(0, 1).toUpperCase() + key.substring(1)] =
-              options.s3[key];
+        for (var key in options.s3) {
+          if (options.s3.hasOwnProperty(key)) {
+            s3Object[key.substring(0, 1).toUpperCase() + key.substring(1)] =
+                options.s3[key];
+          }
         }
-      }
 
-      grunt.verbose.writeflags(s3Object, 's3Param');
+        grunt.verbose.writeflags(s3Object, 's3Param');
 
       // Trying to fix this issue: https://github.com/aws/aws-sdk-js/issues/158
       s3Object.Body = fs.createReadStream(options.sourceBundle);
 
-      grunt.log.write('Uploading source bundle "' + options.sourceBundle +
-          '" to S3 location "' + options.s3.bucket + '/' + options.s3.key + '"...');
+        grunt.log.write('Uploading source bundle "' + options.sourceBundle +
+            '" to S3 location "' + options.s3.bucket + '/' + options.s3.key + '"...');
 
-      return qAWS.putS3Object(s3Object)
-          .then(function () {
-            grunt.log.ok();
-            return env;
-          });
+        return qAWS.putS3Object(s3Object)
+            .then(function () {
+              grunt.log.ok();
+              return env;
+            });
+      } else {
+        grunt.log.write('Using S3 source bundle in "' + options.s3.bucket + '/' + options.s3.key + '"...')
+        grunt.log.ok();
+        return env;
+      }
     }
 
     function checkEnvironmentExists() {
