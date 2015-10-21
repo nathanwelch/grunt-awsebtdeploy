@@ -19,6 +19,15 @@ module.exports = function (grunt) {
       Q      = require('q'),
       mkdirp = require('mkdirp');
 
+  AWS.config.apiVersions = {
+    elasticbeanstalk: '2010-12-01',
+    s3: '2006-03-01',
+    route53: '2013-04-01',
+    elb: '2012-06-01',
+    // This is just before the next EC2 API version on 10/1
+    ec2: '2015-09-30'
+  };
+
   function findEnvironmentByCNAME(data, cname) {
     if (!data || !data.Environments) return false;
 
@@ -711,23 +720,28 @@ module.exports = function (grunt) {
               return qAWS.describeEnvironments({
                 ApplicationName: options.applicationName,
                 EnvironmentNames: [env.EnvironmentName],
-                VersionLabel: options.versionLabel,
+                //VersionLabel: options.versionLabel,
                 IncludeDeleted: false
               });
             })
             .then(function (data) {
-              if (!data.Environments.length) {
-                grunt.log.writeln(options.versionLabel + ' still not deployed to ' +
-                    env.EnvironmentName + ' ...');
-                return checkDeploymentComplete();
+              // If we have environments in the response, check them and return when we find the one with our new version
+              if (data.Environments.length) {
+                for (var envI = 0; envI < data.Environments.length; envI++) {
+                  if (data.Environments[envI].VersionLabel === options.versionLabel) {
+                    grunt.log.writeln(options.versionLabel + ' has been deployed to ' +
+                      data.Environments[envI].EnvironmentName + ' and environment is Ready and Green\n');
+
+                    return data.Environments[envI];
+                  }
+                }
               }
 
-              var currentEnv = data.Environments[0];
-
-              grunt.log.writeln(options.versionLabel + ' has been deployed to ' +
-                  currentEnv.EnvironmentName + ' and environment is Ready and Green\n');
-
-              return currentEnv;
+              // If we couldn't find any environments with our label, check again
+              grunt.log.writeln(options.versionLabel + ' still not deployed to ' +
+                env.EnvironmentName + ' ...');
+              grunt.verbose.writeln(data);
+              return checkDeploymentComplete();
             });
       }
 
