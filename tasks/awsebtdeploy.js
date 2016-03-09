@@ -189,7 +189,7 @@ module.exports = function (grunt) {
 
     function validateOptions() {
       if (!options.applicationName) grunt.warn('Missing "applicationName"');
-      if (!options.environmentCNAME) grunt.warn('Missing "environmentCNAME"');
+      if (!options.environmentCNAME && !options.environmentID) grunt.warn('Missing "environmentCNAME and environmentID"');
       if (!options.region) grunt.warn('Missing "region"');
 
       if (!options.s3) {
