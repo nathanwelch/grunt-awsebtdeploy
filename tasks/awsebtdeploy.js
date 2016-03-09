@@ -36,6 +36,14 @@ module.exports = function (grunt) {
     })[0];
   }
 
+  function findEnvironmentByID(data, envId) {
+    if (!data || !data.Environments) return false;
+
+    return data.Environments.filter(function (e) {
+      return e.EnvironmentId === envId;
+    })[0];
+  }
+
   function createEnvironmentName(applicationName) {
     var maxLength       = 23,
         maxAppLength    = maxLength - 4,
@@ -953,7 +961,11 @@ module.exports = function (grunt) {
     }
 
     function checkEnvironmentExists() {
-      grunt.log.write('Checking that environment with CNAME "' + options.environmentCNAME + '" exists...');
+      if (options.environmentCNAME) {
+        grunt.log.write('Checking that environment with CNAME "' + options.environmentCNAME + '" exists...');
+      } else if (options.environmentID) {
+        grunt.log.write('Checking that environment with ID "' + options.environmentID + '" exists...');
+      }
 
       return qAWS.describeEnvironments({
         ApplicationName: options.applicationName,
@@ -961,11 +973,20 @@ module.exports = function (grunt) {
       }).then(function (data) {
             grunt.verbose.writeflags(data, 'Environments');
 
-            var env = findEnvironmentByCNAME(data, options.environmentCNAME);
+            var env;
+            if (options.environmentCNAME) {
+              env = findEnvironmentByCNAME(data, options.environmentCNAME);
+            } else if (options.environmentID) {
+              env = findEnvironmentByID(data, options.environmentID);
+            }
 
             if (!env) {
               grunt.log.error();
-              grunt.warn('Environment with CNAME "' + options.environmentCNAME + '" does not exist');
+              if (options.environmentCNAME) {
+                grunt.warn('Environment with CNAME "' + options.environmentCNAME + '" does not exist');
+              } else if (options.environmentID) {
+                grunt.warn('Environment with ID "' + options.environmentID + '" does not exist');
+              }
             }
 
             grunt.log.ok();
