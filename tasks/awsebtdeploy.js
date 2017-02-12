@@ -196,7 +196,7 @@ module.exports = function (grunt) {
         options.s3 = {};
       }
 
-      if (!options.s3.key && !grunt.file.isFile(options.sourceBundle))
+      if (!options.remoteDeploy && !options.s3.key && !grunt.file.isFile(options.sourceBundle))
         grunt.warn('"sourceBundle" points to a non-existent file');
 
       if (!options.healthPage) {
@@ -212,11 +212,11 @@ module.exports = function (grunt) {
         options.healthPageScheme = 'http';
       }
 
-      if (!options.s3.bucket) {
+      if (!options.remoteDeploy && !options.s3.bucket) {
         options.s3.bucket = options.applicationName;
       }
 
-      if (!options.s3.key) {
+      if (!options.remoteDeploy && !options.s3.key) {
         options.s3.key = path.basename(options.sourceBundle);
       }
 
@@ -1069,11 +1069,20 @@ module.exports = function (grunt) {
         });
     }
 
-    return checkApplicationExists()
+    if (options.remoteDeploy) {
+      return checkApplicationExists()
         .then(checkEnvironmentExists)
-        .then(uploadApplication)
-        .then(createApplicationVersion)
         .then(invokeDeployType)
         .then(done, done);
+    } else {
+      return checkApplicationExists()
+          .then(checkEnvironmentExists)
+          .then(uploadApplication)
+          .then(createApplicationVersion)
+          .then(invokeDeployType)
+          .then(done, done);
+    }
   });
+
+  grunt.registerMultiTask('')
 };
