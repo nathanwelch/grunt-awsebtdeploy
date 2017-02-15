@@ -40,9 +40,6 @@
     "adm-zip": "~0.4.4",
     "grunt-cli": "~0.1.13"
   },
-  "optionalDependencies": {
-    "grunt-awsebtdeploy-credentials": "git+ssh://git@bitbucket.org:simoneb/grunt-awsebtdeploy-credentials.git"
-  },
   "peerDependencies": {
     "grunt": "~0.4.4"
   },
